@@ -1,5 +1,6 @@
 <html>
     <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
         <script>
             const local = false;
             const audio = {
@@ -43,9 +44,8 @@
                 y: (myColor == "black" ? parseInt(coords.substring(1))-1 : 8-parseInt(coords.substring(1)))
             });
 
-            const isInCheck = (color = myColor) => {
-                const king = piecesPositions.find(p => p.piece == "king" && p.color == color);
-                const ennemiesPieces = piecesPositions.filter(e => e.color !== color);
+            const isInCheck = (king, ennemiesP = false) => {
+                const ennemiesPieces = ennemiesP || piecesPositions.filter(e => e.color !== king.color && e.piece !== "king"); 
                 for (let a = 0; ennemiesPieces[a]; a++) {
                     if (pieceMoves[ennemiesPieces[a].piece](ennemiesPieces[a], king))
                         return ennemiesPieces[a];
@@ -117,7 +117,6 @@
                         if (coordsToTest.x > 7 || coordsToTest.y > 7 || coordsToTest.x < 0 || coordsToTest.y < 0)
                             break;
                     }
-                    console.log("possibilities", possibilities);
                     return !!possibilities.find(e => e.x == toCoords.x && e.y == toCoords.y);
                 },
                 rook: (piece, toCoords) => {
@@ -129,6 +128,33 @@
                             pieceInTheWay = true;
                     }
                     return !pieceInTheWay && toCoords.x < 8 && toCoords.y < 8;
+                },
+                queen: () => {
+                    return false;
+                },
+                king: (piece, toCoords) => {
+                    let possibilities = [];
+                    const moves = [{x: -1, y: -1},
+                            {x: 0, y: -1},
+                            {x: 1, y: -1},
+                            {x: -1, y: 0},
+                            {x: 1, y: 0},
+                            {x: -1, y: 1},
+                            {x: 0, y: 1},
+                            {x: 1, y: 1}];
+                    for (let a = 0; moves[a]; a++) {
+                        const piecePresent = piecePresence({ x: piece.x+moves[a].x, y: piece.y+moves[a].y });
+                        console.log("checking ", { x: piece.x+moves[a].x, y: piece.y+moves[a].y }, "can eat", (piecePresent !== myColor || !piecePresent), "isInCheck", isInCheck({ color: myColor, x: piece.x+moves[a].x, y: piece.y+moves[a].y }), 
+                        "In ranges", (piece.x+moves[a].x < 8 && piece.x+moves[a].x >= 0 && piece.y+moves[a].y >= 0 &&
+                            piece.y+moves[a].y < 8));
+                        if ((piecePresent !== myColor || !piecePresent) &&
+                            !isInCheck({ color: myColor, x: piece.x+moves[a].x, y: piece.y+moves[a].y }) &&
+                            piece.x+moves[a].x < 8 && piece.x+moves[a].x >= 0 && piece.y+moves[a].y >= 0 &&
+                            piece.y+moves[a].y < 8) {
+                                possibilities.push({x: piece.x+moves[a].x, y: piece.y+moves[a].y});
+                            }
+                    }
+                    return !!possibilities.find(e => e.x == toCoords.x && e.y == toCoords.y);
                 },
                 knight: (piece, toCoords) => {
                     let possibilities = [];
