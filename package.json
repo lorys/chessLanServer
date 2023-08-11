@@ -1,0 +1,20 @@
+{
+  "name": "echecs",
+  "version": "1.0.0",
+  "description": "chess LAN",
+  "main": "websocket.js",
+  "author": "lorys",
+  "license": "MIT",
+  "private": false,
+  "scripts": {
+    "start": "nodemon ./websocket.js localhost 8080",
+    "prod": "node ./websocket.js"
+  },
+  "dependencies": {
+    "http": "^0.0.1-security",
+    "ws": "^8.13.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}

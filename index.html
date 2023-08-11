@@ -1,0 +1,509 @@
+<html>
+    <head>
+        <script>
+            const local = false;
+            const audio = {
+                start: new Audio("./assets/start.wav"),
+                move: new Audio("./assets/move.mp3"),
+                capture: new Audio("./assets/capture.mp3"),
+                moveCheck: new Audio("./assets/move-check.mp3"),
+                win: new Audio("./assets/win.wav"),
+                loose: new Audio("./assets/WetFart.mp3")
+            }
+            const chessboardConfig = {
+                    squares: {
+                        side: 70,
+                        color: ["#34495e", "#ecf0f1"],
+                        movedToColor: "#f1c40f",
+                        movedFromColor: "#f39c12"
+                    }
+                };
+            let holding = null;
+            let gameMode = null;
+            let ws = null;
+            let turn = "white";
+            let myColor = "white";
+            let movedFrom = null;
+            let movedTo = null;
+            let piecesPositions = [];
+
+            const piecePresence = (matrixCoords) => {
+                const presence = piecesPositions.find(e => e.x == matrixCoords.x && e.y == matrixCoords.y);
+                return presence ? presence.color : false;
+            };
+
+            const translateToChessCoords = ({x, y}) => {
+                const columnLetter = (myColor == "white" ? "abcdefgh" : "hgfedcba")[x];
+                const line = myColor == "black" ? y + 1 : 8 - y;
+                return `${columnLetter}${line}`;
+            };
+
+            const translateToMatrixCoords = (coords) => ({
+                x: myColor == "black" ? 7-(coords.charCodeAt(0)-("a".charCodeAt(0))) : (coords.charCodeAt(0)-("a".charCodeAt(0))),
+                y: (myColor == "black" ? parseInt(coords.substring(1))-1 : 8-parseInt(coords.substring(1)))
+            });
+
+            const isInCheck = (color = myColor) => {
+                const king = piecesPositions.find(p => p.piece == "king" && p.color == color);
+                const ennemiesPieces = piecesPositions.filter(e => e.color !== color);
+                for (let a = 0; ennemiesPieces[a]; a++) {
+                    if (pieceMoves[ennemiesPieces[a].piece](ennemiesPieces[a], king))
+                        return ennemiesPieces[a];
+                }
+                return false;
+            };
+
+            const pieceMoves = {
+                bishop: (piece, toCoords) => {
+                    let pieceInTheWay = false;
+                    let possibilities = [];
+                    const {x, y} = piece;
+                    for (let a = 1; !pieceInTheWay; a++) {
+                        const coordsToTest = {x: x-a, y: y-a}; 
+                        const piecePre = piecePresence(coordsToTest);
+                        if (piecePre == myColor)
+                            pieceInTheWay = true;
+                        if (piecePre && piecePre !== myColor) {
+                            possibilities.push(coordsToTest);
+                            break;
+                        }
+                        if (!pieceInTheWay)
+                            possibilities.push(coordsToTest);
+                        if (coordsToTest.x > 7 || coordsToTest.y > 7 || coordsToTest.x < 0 || coordsToTest.y < 0)
+                            break;
+                    }
+                    pieceInTheWay = false;
+                    for (let a = 1; !pieceInTheWay; a++) {
+                        const coordsToTest = {x: x+a, y: y+a};
+                        const piecePre = piecePresence(coordsToTest);
+                        if (piecePre == myColor)
+                            pieceInTheWay = true;
+                        if (piecePre && piecePre !== myColor) {
+                            possibilities.push(coordsToTest);
+                            break;
+                        }
+                        if (!pieceInTheWay)
+                            possibilities.push(coordsToTest);
+                        if (coordsToTest.x > 7 || coordsToTest.y > 7 || coordsToTest.x < 0 || coordsToTest.y < 0)
+                            break;
+                    }
+                    pieceInTheWay = false;
+                    for (let a = 1; !pieceInTheWay; a++) {
+                        const coordsToTest = {x: x+a, y: y-a};
+                        const piecePre = piecePresence(coordsToTest);
+                        if (piecePre == myColor)
+                            pieceInTheWay = true;
+                        if (piecePre && piecePre !== myColor) {
+                            possibilities.push(coordsToTest);
+                            break;
+                        }
+                        if (!pieceInTheWay)
+                            possibilities.push(coordsToTest);
+                        if (coordsToTest.x > 7 || coordsToTest.y > 7 || coordsToTest.x < 0 || coordsToTest.y < 0)
+                            break;
+                    }
+                    pieceInTheWay = false;
+                    for (let a = 1; !pieceInTheWay; a++) {
+                        const coordsToTest = {x: x-a, y: y+a};
+                        const piecePre = piecePresence(coordsToTest);
+                        if (piecePre == myColor)
+                            pieceInTheWay = true;
+                        if (piecePre && piecePre !== myColor) {
+                            possibilities.push(coordsToTest);
+                            break;
+                        }
+                        if (!pieceInTheWay)
+                            possibilities.push(coordsToTest);
+                        if (coordsToTest.x > 7 || coordsToTest.y > 7 || coordsToTest.x < 0 || coordsToTest.y < 0)
+                            break;
+                    }
+                    console.log("possibilities", possibilities);
+                    return !!possibilities.find(e => e.x == toCoords.x && e.y == toCoords.y);
+                },
+                rook: (piece, toCoords) => {
+                    let pieceInTheWay = false;
+                    for (let a = 0; a < 8 && !pieceInTheWay; a++) {
+                        const {x, y} = translateRealToMatrixCoords(toCoords);
+                        const pieceIndex = piecesPositions.findIndex(piece => piece.x == x && piece.y == y);
+                        if (pieceIndex !== -1)
+                            pieceInTheWay = true;
+                    }
+                    return !pieceInTheWay && toCoords.x < 8 && toCoords.y < 8;
+                },
+                knight: (piece, toCoords) => {
+                    let possibilities = [];
+                    const moves = [{x: -1, y: -2},
+                    {x: 1, y: -2},
+                    {x: 2, y: -1},
+                    {x: -2, y: -1},
+                    {x: 2, y: 1},
+                    {x: -2, y: 1},
+                    {x: -1, y: 2},
+                    {x: 1, y: 2}];
+                    for (let a = 0; moves[a]; a++) {
+                        if (piece.x+moves[a].x >= 0 && piece.y+moves[a].y >= 0 && piecePresence({x: piece.x+moves[a].x, y: piece.y+moves[a].y}) !== myColor)
+                            possibilities.push({x: piece.x+moves[a].x, y: piece.y+moves[a].y});
+                    }
+                    return !!possibilities.find(e => e.x === toCoords.x && e.y === toCoords.y);
+                },
+                pawn: (piece, toCoords) => {
+                    const toCoordsTranslated = translateRealToMatrixCoords(toCoords);
+                    const toCoordsPiece = piecePresence(toCoordsTranslated);
+                    return (piece.y == 6 && toCoords.y == 4 && !toCoordsPiece && !piecePresence({ ...toCoords, y: 5 })) ||
+                    (piece.y > 4 && toCoords.y === piece.y-1 && !toCoordsPiece && piece.x === toCoords.x) ||
+                    (piece.y-1 === toCoords.x && (piece.x+1 === toCoords.x || piece.x-1 === toCoords.x) && (piecePresence({ ...toCoords, x: toCoords.x+1 })));
+                }
+            };
+            const generateImage = (src) => {
+                const img = new Image();
+                img.src=src;
+                return img;
+            };
+            const piecesImages = {
+                black: {
+                        bishop: generateImage('./assets/bishop_black.png'),
+                        knight: generateImage('./assets/knight_black.png'),
+                        rook: generateImage('./assets/rook_black.png'),
+                        queen: generateImage('./assets/queen_black.png'),
+                        king: generateImage('./assets/king_black.png'),
+                        pawn: generateImage('./assets/pawn_black.png')
+                    }, 
+                white: {
+                        bishop: generateImage('./assets/bishop_white.png'),
+                        knight: generateImage('./assets/knight_white.png'),
+                        rook: generateImage('./assets/rook_white.png'),
+                        queen: generateImage('./assets/queen_white.png'),
+                        king: generateImage('./assets/king_white.png'),
+                        pawn: generateImage('./assets/pawn_white.png')
+                    }
+                };
+            const modes = {
+                ONE_AGAINST_EVERYONE: "Le principe de ce mode est qu'une seule personne joue contre tout le monde. Tout le monde vote pour un coup et le coup est choisi lorsque tout le monde a voté.",
+                REGULAR: "Tu vas jouer contre une autre personne sur le réseau."
+            }
+
+            const translateRealToMatrixCoords = ({x, y}) => {
+                const { squares: { side } } = chessboardConfig;
+                if (x < 8 && y < 8)
+                    return ({
+                        x, y
+                    });
+                return ({
+                    x: (x/side) << 0,
+                    y: (y/side) << 0
+                });
+            };
+
+            const alertGameMode = () => {
+                const el = document.querySelector("#gameModeAlert");
+                const pseudoAlert = document.querySelector("#pseudoAlert");
+                const elTxt = document.querySelector("#gameModeAlertContent");
+                el.style.display='inline';
+                pseudoAlert.style.display='none';
+                elTxt.innerHTML=modes[gameMode];
+            };
+
+            const dropPiece = (cursorX, cursorY) => {
+                const toCoords = translateRealToMatrixCoords({x: cursorX, y: cursorY});
+                const validCoords = !(toCoords.x > 7 || toCoords.y > 7 || toCoords.y < 0 || toCoords.y < 0);
+                const { squares: { side } } = chessboardConfig;
+                const pieceId = piecesPositions.findIndex(b => b.id === holding);
+                const piece = piecesPositions[pieceId];
+                if (validCoords && pieceMoves[piece.piece](piece, toCoords)) {
+                    movedFrom = { x: piece.x, y: piece.y };
+                    ws.send(JSON.stringify({ move: {
+                        piece: piecesPositions[pieceId].piece,
+                        from: translateToChessCoords(piecesPositions[pieceId]),
+                        to: translateToChessCoords(toCoords)
+                    } }));
+                    piecesPositions[pieceId].x = toCoords.x;
+                    piecesPositions[pieceId].y = toCoords.y;
+                    movedTo = toCoords;
+                    turn = turn == "white" ? "black" : "white";
+                    audio.move.play();
+                }
+                piecesPositions[pieceId].realX = null;
+                piecesPositions[pieceId].realY = null;
+                holding = null;
+            };
+
+            const dragPiece = (e) => {
+                if (turn !== myColor && !local)
+                    return;
+                const { offsetX: cursorX, offsetY: cursorY } = e;
+                const { squares: { side } } = chessboardConfig;
+                const grabbing = holding ? piecesPositions[piecesPositions.findIndex(b => b.id === holding)] : piecesPositions.find(piece => {
+                    const pieceX = piece.x*side;
+                    const pieceY = piece.y*side;
+                    return pieceX+side > cursorX && cursorX > pieceX &&
+                             pieceY+side > cursorY && cursorY > pieceY;
+                });
+                if (grabbing && e?.pressure > 0) {
+                    if (!holding)
+                        holding = grabbing.id;
+                    grabbing.realX = cursorX-Math.round(side/2);
+                    grabbing.realY = cursorY-Math.round(side/2);
+                }
+                if (grabbing && holding && e?.pressure === 0) {
+                    piecesPositions[piecesPositions.findIndex(b => b.id === holding)] = { ...grabbing, realX: undefined, realY: undefined };
+                    dropPiece(cursorX, cursorY);
+                }
+                renderChessboard();
+            };
+
+            const renderChessboard = () => {
+                const chessboard = document.querySelector("#chessboard");
+                const config = chessboardConfig;
+                chessboard.width = config.squares.side*8;
+                chessboard.height = config.squares.side*8;
+                const canvas = chessboard.getContext('2d');
+                const putSquares = () => {
+                    const { squares: { side } } = config;
+                    for (let a = 0; a < 8*8; a++) {
+                        const x = a%8;
+                        const y = a/8 << 0;
+                        let colorIndex = y%2 ? (x%2 ? 1 : 0) : (x%2 ? 0 : 1);
+                        let fillColor = config.squares.color[colorIndex];
+                        if (movedFrom?.x == x && movedFrom?.y == y)
+                            fillColor = config.squares.movedFromColor;
+                        else if (movedTo?.x == x && movedTo?.y == y)
+                            fillColor = config.squares.movedToColor;
+                        canvas.fillStyle = fillColor;
+                        canvas.fillRect(x*side, y*side, side, side);
+                    }
+                };
+
+                const printPieces = () => {
+                    const { squares: { side } } = config;
+                    for (let pieceIndex = 0; piecesPositions[pieceIndex]; pieceIndex++) {
+                        const { piece, color, x, y, realX, realY } = piecesPositions[pieceIndex];
+                        canvas.drawImage(piecesImages[color][piece], realX || x*side, realY || y*side, side, side);
+                    }
+                };
+
+                putSquares();
+                printPieces();
+            };
+
+            const setPiecesPosition = () => {
+                piecesPositions = [{
+                            piece: 'rook',
+                            color: myColor == "white" ? "black" : "white",
+                            x: 0,
+                            y: 0
+                        },{
+                            piece: 'knight',
+                            color: myColor == "white" ? "black" : "white",
+                            x: 1,
+                            y: 0
+                        },{
+                            piece: 'bishop',
+                            color: myColor == "white" ? "black" : "white",
+                            x: 2,
+                            y: 0
+                        },{
+                            piece: myColor == "white" ? "queen" : 'king',
+                            color: myColor == "white" ? "black" : "white",
+                            x: 3,
+                            y: 0
+                        },{
+                            piece: myColor == "white" ? "king" : 'queen',
+                            color: myColor == "white" ? "black" : "white",
+                            x: 4,
+                            y: 0
+                        },{
+                            piece: 'bishop',
+                            color: myColor == "white" ? "black" : "white",
+                            x: 5,
+                            y: 0
+                        },{
+                            piece: 'knight',
+                            color: myColor == "white" ? "black" : "white",
+                            x: 6,
+                            y: 0
+                        },{
+                            piece: 'rook',
+                            color: myColor == "white" ? "black" : "white",
+                            x: 7,
+                            y: 0
+                        }];
+                        for (let a = 0; a < 8; a++)
+                            piecesPositions.push({
+                                piece: 'pawn',
+                                color:  myColor == "white" ? "black" : "white",
+                                x: a,
+                                y: 1
+                            });
+                        piecesPositions = [...piecesPositions, {
+                            piece: 'rook',
+                            color: myColor,
+                            x: 0,
+                            y: 7
+                        },{
+                            piece: 'knight',
+                            color: myColor,
+                            x: 1,
+                            y: 7
+                        },{
+                            piece: 'bishop',
+                            color: myColor,
+                            x: 2,
+                            y: 7
+                        },{
+                            piece: myColor == "white" ? "queen" : 'king',
+                            color: myColor,
+                            x: 3,
+                            y: 7
+                        },{
+                            piece: myColor == "white" ? "king" : 'queen',
+                            color: myColor,
+                            x: 4,
+                            y: 7
+                        },{
+                            piece: 'bishop',
+                            color: myColor,
+                            x: 5,
+                            y: 7
+                        },{
+                            piece: 'knight',
+                            color: myColor,
+                            x: 6,
+                            y: 7
+                        },{
+                            piece: 'rook',
+                            color: myColor,
+                            x: 7,
+                            y: 7
+                        }];
+                        for (let a = 0; a < 8; a++)
+                            piecesPositions.push({
+                                piece: 'pawn',
+                                color:  myColor,
+                                x: a,
+                                y: 6
+                            });
+                        piecesPositions = piecesPositions.map(e => ({...e, id: Math.round(Math.random() * 100000)}));
+            };
+
+            const connectWS = () => {
+                ws = new WebSocket("ws://"+document.location.hostname+":8000");
+                ws.onmessage = ({data: rawdata}) => {
+                    console.log("received", rawdata);
+                    const data = JSON.parse(rawdata);
+                    if (data?.gameMode) { // receive gameMode means connected successfully
+                        gameMode = data?.gameMode;
+                        alertGameMode();
+                    }
+                    if (data?.foundGame === false) {
+                        document.querySelector("#waiting").style.display='inline';
+                    }
+                    if (data?.foundGame === true) {
+                        audio.start.play();
+                        myColor = data?.color;
+                        setPiecesPosition();
+                        document.querySelector("#waiting").style.display='none';
+                        renderChessboard();
+                        document.querySelector("#chessboard").style.display='inline';
+                        document.querySelector("#opponent").innerHTML=data?.opponent;
+                    }
+                    if (data?.move) {
+                        audio.move.play();
+                        const fromMatrixCoords = translateToMatrixCoords(data?.move?.from);
+                        movedFrom = fromMatrixCoords;
+                        const toMatrixCoords = translateToMatrixCoords(data?.move?.to);
+                        movedTo = toMatrixCoords;
+                        const movedPiece = piecesPositions.find(e => e.x == fromMatrixCoords.x && e.y == fromMatrixCoords.y);
+                        console.log("movedPiece", movedPiece, toMatrixCoords);
+                        if (!movedPiece)
+                            alert("Couldn't find the moved piece !");
+                        else {
+                            movedPiece.x = toMatrixCoords.x;
+                            movedPiece.y = toMatrixCoords.y;
+                            renderChessboard();
+                            turn = turn == "white" ? "black" : "white";
+                        }
+                    }
+                };
+            };
+
+            const play = () => {
+                const chessboard = document.querySelector("#chessboard");
+                chessboard.addEventListener('pointerdown', dragPiece);
+                chessboard.addEventListener('pointermove', dragPiece);
+                chessboard.addEventListener('pointerup', dragPiece);
+                ws.send(JSON.stringify({pseudo: document.querySelector("#pseudo").value}));
+            };
+        </script>
+        <style>
+            #gameModeAlert, #waiting, #game {
+                display: none;
+            }
+            .alert {
+                border-radius: 10px;
+                background-color: white;
+                padding: 10px;
+                text-align: center;
+                position: fixed;
+                left: 50vw;
+                top: 50vh;
+                transform: translateX(-50%) translateY(-50%);
+                box-shadow: 0px 0px 40px -10px black; 
+            }
+            .alert input {
+                font-size: 25px;
+                border: none;
+                outline: none;
+            }
+            .alert button {
+                padding: 5px;
+                font-size: 20px;
+                background-color: #2ecc71;
+                color: white;
+                border: none;
+                border-radius: 5px;
+            }
+            #chessboardcontainer {
+                display: block;
+                text-align: center;
+            }
+            #opponent {
+                display: block;
+                font-size: 30px;
+                font-weight: bold;
+                margin: 20px;
+            }
+            #game {
+                position: fixed;
+                top: 0;
+                right: 0;
+                width: 10vw;
+                overflow: auto;
+                height: 40vh;
+                font-weight: bold;
+                font-size: 20px;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="waiting" class="alert"><h2>En attente d'un joueur...</h2></div>
+        <div class="alert" id="pseudoAlert">
+            <input type="text" id="pseudo" placeholder="Entre un pseudo"/>
+            <button onClick="play();">JOUER</button>
+        </div>
+        <div class="alert" id="gameModeAlert">
+            <h3>Mode de jeu</h3>
+            <span id="gameModeAlertContent"></span><br/>
+            <button onClick="document.querySelector('#gameModeAlert').style.display='none';">OK</button>
+        </div>
+        <div id="chessboardcontainer">
+            <span id="opponent"></span>
+            <canvas id="chessboard"></canvas>
+        </div>
+        <div id="game">
+            
+        </div>
+        <script>
+            connectWS();
+        </script>
+    </body>
+</html>
