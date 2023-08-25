@@ -2,7 +2,7 @@
     <head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <script>
-            const local = false;
+            const local = true;
             const audio = {
                 start: new Audio("./assets/start.wav"),
                 move: new Audio("./assets/move.mp3"),
@@ -27,6 +27,7 @@
             let movedFrom = null;
             let movedTo = null;
             let piecesPositions = [];
+            let gameHistory = [];
 
             const piecePresence = (matrixCoords) => {
                 const presence = piecesPositions.find(e => e.x == matrixCoords.x && e.y == matrixCoords.y);
@@ -50,6 +51,11 @@
                     if (pieceMoves[ennemiesPieces[a].piece](ennemiesPieces[a], king))
                         return ennemiesPieces[a];
                 }
+                const ennemieKing = piecesPositions.find(e => e.color !== king.color && e.piece === "king");
+                const dXk = ennemieKing.x-king.x < 0 ? -(ennemieKing.x-king.x) : (ennemieKing.x-king.x);
+                const dYk = (ennemieKing.y-king.y) < 0 ? -(ennemieKing.y-king.y) : (ennemieKing.y-king.y);
+                if (dXk < 2 && dYk < 2)
+                    return ennemieKing; 
                 return false;
             };
 
@@ -120,14 +126,32 @@
                     return !!possibilities.find(e => e.x == toCoords.x && e.y == toCoords.y);
                 },
                 rook: (piece, toCoords) => {
+                    let possibilities = [];
                     let pieceInTheWay = false;
-                    for (let a = 0; a < 8 && !pieceInTheWay; a++) {
-                        const {x, y} = translateRealToMatrixCoords(toCoords);
-                        const pieceIndex = piecesPositions.findIndex(piece => piece.x == x && piece.y == y);
-                        if (pieceIndex !== -1)
-                            pieceInTheWay = true;
+                    for (let up = 1; !pieceInTheWay && piece.y-up >= 0; up++) {
+                        pieceInTheWay = piecePresence({ x: parseInt(piece.x), y: parseInt(piece.y)-up});
+                        if (!pieceInTheWay)
+                            possibilities.push({ x: piece.x, y: parseInt(piece.y)-up});
                     }
-                    return !pieceInTheWay && toCoords.x < 8 && toCoords.y < 8;
+                    pieceInTheWay = false;
+                    for (let down = 1; !pieceInTheWay && piece.y+down < 8; down++) {
+                        pieceInTheWay = piecePresence({ x: parseInt(piece.x), y: parseInt(piece.y)+down});
+                        if (!pieceInTheWay)
+                            possibilities.push({ x: piece.x, y: parseInt(piece.y)+down});
+                    }
+                    pieceInTheWay = false;
+                    for (let left = 1; !pieceInTheWay && piece.x-left >= 0; left++) {
+                        pieceInTheWay = piecePresence({ x: parseInt(piece.x)-left, y: parseInt(piece.y)});
+                        if (!pieceInTheWay)
+                            possibilities.push({ x: parseInt(piece.x)-left, y: parseInt(piece.y)});
+                    }
+                    pieceInTheWay = false;
+                    for (let right = 1; !pieceInTheWay && piece.y+right < 8; right++) {
+                        pieceInTheWay = piecePresence({ x: parseInt(piece.x)+right, y: parseInt(piece.y)});
+                        if (!pieceInTheWay)
+                            possibilities.push({ x: parseInt(piece.x)+right, y: parseInt(piece.y)});
+                    }
+                    return possibilities.find(e => e.x == toCoords.x && e.y == toCoords.y);
                 },
                 queen: () => {
                     return false;
@@ -143,15 +167,13 @@
                             {x: 0, y: 1},
                             {x: 1, y: 1}];
                     for (let a = 0; moves[a]; a++) {
-                        const piecePresent = piecePresence({ x: piece.x+moves[a].x, y: piece.y+moves[a].y });
-                        console.log("checking ", { x: piece.x+moves[a].x, y: piece.y+moves[a].y }, "can eat", (piecePresent !== myColor || !piecePresent), "isInCheck", isInCheck({ color: myColor, x: piece.x+moves[a].x, y: piece.y+moves[a].y }), 
-                        "In ranges", (piece.x+moves[a].x < 8 && piece.x+moves[a].x >= 0 && piece.y+moves[a].y >= 0 &&
-                            piece.y+moves[a].y < 8));
+                        const piecePresent = piecePresence({ x: parseInt(piece.x)+moves[a].x, y: parseInt(piece.y)+moves[a].y });
+                        console.log(JSON.stringify({ x: parseInt(piece.x)+moves[a].x, y: parseInt(piece.y)+moves[a].y }), "is my color", (piecePresent !== myColor || !piecePresent), "inCheck", isInCheck({ color: myColor, x: parseInt(piece.x)+moves[a].x, y: parseInt(piece.y)+moves[a].y }));
                         if ((piecePresent !== myColor || !piecePresent) &&
-                            !isInCheck({ color: myColor, x: piece.x+moves[a].x, y: piece.y+moves[a].y }) &&
-                            piece.x+moves[a].x < 8 && piece.x+moves[a].x >= 0 && piece.y+moves[a].y >= 0 &&
+                            !isInCheck({ color: myColor, x: parseInt(piece.x)+moves[a].x, y: parseInt(piece.y)+moves[a].y }) &&
+                            piece.x+moves[a].x < 8 && parseInt(piece.x)+moves[a].x >= 0 && parseInt(piece.y)+moves[a].y >= 0 &&
                             piece.y+moves[a].y < 8) {
-                                possibilities.push({x: piece.x+moves[a].x, y: piece.y+moves[a].y});
+                                possibilities.push({x: parseInt(piece.x)+moves[a].x, y: parseInt(piece.y)+moves[a].y});
                             }
                     }
                     return !!possibilities.find(e => e.x == toCoords.x && e.y == toCoords.y);
@@ -175,14 +197,49 @@
                 pawn: (piece, toCoords) => {
                     const toCoordsTranslated = translateRealToMatrixCoords(toCoords);
                     const toCoordsPiece = piecePresence(toCoordsTranslated);
-                    return (piece.y == 6 && toCoords.y == 4 && !toCoordsPiece && !piecePresence({ ...toCoords, y: 5 })) ||
-                    (piece.y > 4 && toCoords.y === piece.y-1 && !toCoordsPiece && piece.x === toCoords.x) ||
-                    (piece.y-1 === toCoords.x && (piece.x+1 === toCoords.x || piece.x-1 === toCoords.x) && (piecePresence({ ...toCoords, x: toCoords.x+1 })));
+                    let possibilities = [];
+                    if (myColor == "white") {
+                        if (piece.color === "white") {
+                            if (piece.y == 6 && !piecePresence({ x: piece.x, y: 5}) && !piecePresence({ x: piece.x, y: 4})) {
+                                possibilities.push({ x: piece.x, y: 4 });
+                                possibilities.push({ x: piece.x, y: 5 });
+                            }
+                            let canEat = piecePresence({ x: piece.x+1, y: piece.y-1 });
+                            if (canEat && canEat.color !== myColor) {
+                                possibilities.push({ x: piece.x+1, y: piece.y-1 });
+                            }
+                            canEat = piecePresence({ x: piece.x-1, y: piece.y-1 });
+                            if (canEat && canEat.color !== myColor) {
+                                possibilities.push({ x: piece.x-1, y: piece.y-1 });
+                            }
+                            if (!piecePresence({ x: piece.x, y: piece.y + 1 })) {
+                                possibilities.push({ x: piece.x-1, y: piece.y+1 });
+                            }
+                        }
+                        if (piece.color === "black") {
+                            if (piece.y == 1 && !piecePresence({ x: piece.x, y: 3}) && !piecePresence({ x: piece.x, y: 2})) {
+                                possibilities.push({ x: piece.x, y: 2 });
+                                possibilities.push({ x: piece.x, y: 3 });
+                            }
+                            let canEat = piecePresence({ x: piece.x+1, y: piece.y+1 });
+                            if (canEat && canEat.color !== myColor) {
+                                possibilities.push({ x: piece.x+1, y: piece.y+1, eat: 1 });
+                            }
+                            canEat = piecePresence({ x: piece.x-1, y: piece.y+1 });
+                            if (canEat && canEat.color !== myColor) {
+                                possibilities.push({ x: piece.x-1, y: piece.y+1 });
+                            }
+                            if (!piecePresence({ x: piece.x, y: piece.y - 1 })) {
+                                possibilities.push({ x: piece.x-1, y: piece.y-1, eat: 1 });
+                            }
+                        }
+                    }
+                    return possibilities.find(e => e.x == toCoords.x && e.y == toCoords.y);
                 }
             };
             const generateImage = (src) => {
                 const img = new Image();
-                img.src=src;
+                img.src = src;
                 return img;
             };
             const piecesImages = {
@@ -235,27 +292,38 @@
                 const { squares: { side } } = chessboardConfig;
                 const pieceId = piecesPositions.findIndex(b => b.id === holding);
                 const piece = piecesPositions[pieceId];
-                if (validCoords && pieceMoves[piece.piece](piece, toCoords)) {
-                    movedFrom = { x: piece.x, y: piece.y };
-                    ws.send(JSON.stringify({ move: {
+                const isValidMove = pieceMoves[piece.piece](piece, toCoords);
+                if (turn == piece.color && validCoords && isValidMove) {
+                    const move = {
                         piece: piecesPositions[pieceId].piece,
                         from: translateToChessCoords(piecesPositions[pieceId]),
                         to: translateToChessCoords(toCoords)
-                    } }));
+                    };
+                    gameHistory.push(move);
+                    movedFrom = { x: piece.x, y: piece.y };
                     piecesPositions[pieceId].x = toCoords.x;
                     piecesPositions[pieceId].y = toCoords.y;
-                    movedTo = toCoords;
-                    turn = turn == "white" ? "black" : "white";
-                    audio.move.play();
+                    if (isInCheck(piecesPositions.find(e => e.color === myColor && e.piece === "king"))) {
+                        console.log(piece, "PINNED");
+                        piecesPositions[pieceId].x = movedFrom.x;
+                        piecesPositions[pieceId].y = movedFrom.y;
+                        movedFrom = null;
+                        gameHistory.pop();
+                    } else {
+                        movedTo = toCoords;
+                        turn = turn == "white" ? "black" : "white";
+                    }
                 }
                 piecesPositions[pieceId].realX = null;
                 piecesPositions[pieceId].realY = null;
                 holding = null;
+                if (!local) {
+                    ws.send(JSON.stringify({move}));
+                }
+                audio.move.play();
             };
 
             const dragPiece = (e) => {
-                if (turn !== myColor && !local)
-                    return;
                 const { offsetX: cursorX, offsetY: cursorY } = e;
                 const { squares: { side } } = chessboardConfig;
                 const grabbing = holding ? piecesPositions[piecesPositions.findIndex(b => b.id === holding)] : piecesPositions.find(piece => {
@@ -429,7 +497,6 @@
                         setPiecesPosition();
                         document.querySelector("#waiting").style.display='none';
                         renderChessboard();
-                        document.querySelector("#chessboard").style.display='inline';
                         document.querySelector("#opponent").innerHTML=data?.opponent;
                     }
                     if (data?.move) {
@@ -454,10 +521,19 @@
 
             const play = () => {
                 const chessboard = document.querySelector("#chessboard");
+                document.querySelector("#waiting").style.display='none';
+                const pseudoAlert = document.querySelector("#pseudoAlert");
+                pseudoAlert.style.display='none';
+                chessboard.style.display='inline';
                 chessboard.addEventListener('pointerdown', dragPiece);
                 chessboard.addEventListener('pointermove', dragPiece);
                 chessboard.addEventListener('pointerup', dragPiece);
-                ws.send(JSON.stringify({pseudo: document.querySelector("#pseudo").value}));
+                if (local) {
+                        setPiecesPosition();
+                        renderChessboard();
+                } else {
+                    ws.send(JSON.stringify({pseudo: document.querySelector("#pseudo").value}));
+                }
             };
         </script>
         <style>
@@ -508,6 +584,14 @@
                 font-weight: bold;
                 font-size: 20px;
             }
+
+            #pgn {
+                position: absolute;
+                bottom: 0;
+                right: 0;
+                width: 20vw;
+                height: 20vh;
+            }
         </style>
     </head>
     <body>
@@ -528,8 +612,13 @@
         <div id="game">
             
         </div>
+        <textarea id="pgn"></textarea>
         <script>
-            connectWS();
-        </script>
+            if (local) {
+                setTimeout(() => play(), 500);
+            } else {
+                connectWS();
+            }
+            </script>
     </body>
 </html>
